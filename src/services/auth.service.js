@@ -30,16 +30,14 @@ class AuthService {
         this.client = await this._loadSavedTokensIfExist();
 
         if (this.client) {
-            // Check if current client tokens match the loaded client_credentials
-            // But fromJSON does both. Let's setup the OAuth2 client using credentialsObj and tokens
             const key = credentialsObj.installed || credentialsObj.web;
+            const redirectUri = key.redirect_uris && key.redirect_uris[0] !== 'urn:ietf:wg:oauth:2.0:oob' ? key.redirect_uris[0] : 'http://127.0.0.1';
             const oAuth2Client = new google.auth.OAuth2(
                 key.client_id,
                 key.client_secret,
-                'urn:ietf:wg:oauth:2.0:oob'
+                redirectUri
             );
 
-            // Set the saved token
             oAuth2Client.setCredentials(this.client.credentials);
             this.client = oAuth2Client;
             return this.client;
@@ -55,24 +53,20 @@ class AuthService {
     }
 
     async _getClientCredentials(discordService, targetUserId) {
-        // 先嘗試從資料庫讀取
         let dbCreds = await this.storage.getSetting('client_credentials');
         if (dbCreds) {
             try { return JSON.parse(dbCreds); } catch (e) { }
         }
 
-        // 如果沒有，嘗試舊版本地檔案(向下相容)
         let fileCreds;
         try {
             const content = await fs.readFile(this.CREDENTIALS_PATH);
             fileCreds = JSON.parse(content);
             await this.storage.setSetting('client_credentials', JSON.stringify(fileCreds));
-            // try to delete it for security
             await fs.unlink(this.CREDENTIALS_PATH).catch(() => { });
             return fileCreds;
         } catch (e) { }
 
-        // 如果資料庫跟檔案都沒有，透過 Discord 詢問
         await discordService.sendUploadCredentialsMessage(targetUserId);
 
         return new Promise((resolve) => {
@@ -106,7 +100,6 @@ class AuthService {
     }
 
     async _loadSavedTokensIfExist() {
-        // try DB first
         let dbTokens = await this.storage.getSetting('user_tokens');
         if (dbTokens) {
             try {
@@ -115,13 +108,11 @@ class AuthService {
             } catch (e) { }
         }
 
-        // try file (backward compat)
         try {
             const content = await fs.readFile(this.TOKEN_PATH);
             const credentials = JSON.parse(content);
             const authClient = google.auth.fromJSON(credentials);
             if (authClient) {
-                // save to db
                 await this.storage.setSetting('user_tokens', JSON.stringify(credentials));
                 await fs.unlink(this.TOKEN_PATH).catch(() => { });
             }
@@ -133,7 +124,7 @@ class AuthService {
 
     async _authenticate(discordService, targetUserId, credentialsObj) {
         const key = credentialsObj.installed || credentialsObj.web;
-        const redirectUri = 'urn:ietf:wg:oauth:2.0:oob';
+        const redirectUri = key.redirect_uris && key.redirect_uris[0] !== 'urn:ietf:wg:oauth:2.0:oob' ? key.redirect_uris[0] : 'http://127.0.0.1';
 
         const oAuth2Client = new google.auth.OAuth2(
             key.client_id,
@@ -163,9 +154,9 @@ class AuthService {
 
                     const input = new TextInputBuilder()
                         .setCustomId('auth_code_input')
-                        .setLabel("請貼上 Google 給您的驗證碼 (Code)")
+                        .setLabel("請貼上無法連線的網址 (或是 Code 本身)")
                         .setStyle(TextInputStyle.Short)
-                        .setPlaceholder("4/0Ae...")
+                        .setPlaceholder("http://127.0.0.1/?code=4/0Ae...")
                         .setRequired(true);
 
                     modal.addComponents(new ActionRowBuilder().addComponents(input));
@@ -220,7 +211,6 @@ class AuthService {
     }
 
     async _saveTokens(tokens) {
-        // 我們儲存到資料庫中
         const payload = JSON.stringify({
             type: 'authorized_user',
             client_id: this.client._clientId,

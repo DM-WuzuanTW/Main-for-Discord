@@ -21,7 +21,7 @@ class DiscordService {
         this.client.once(Events.ClientReady, () => {
             this.logger.info(`Bot 已登入: ${this.client.user.tag}`);
             this.isReady = true;
-            this.updatePresence('等待授權與設定...', 'dnd'); // 預設狀態
+            this.updatePresence('等待授權與設定...', 'dnd');
         });
 
         this.client.on(Events.InteractionCreate, async interaction => {

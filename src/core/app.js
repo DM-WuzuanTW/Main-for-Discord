@@ -77,14 +77,32 @@ class GmailNotifierApp {
                             this.logger.info(`✅ 成功重發通知 (ID: ${msg.id})`);
                         } catch (err) {
                             this.logger.error(`❌ 重發通知依然失敗 (ID: ${msg.id})`, err);
-                            // 如果重發也失敗，它依然沒有存進 storage，下個輪詢會再次抓到，
-                            // 但為了避免阻塞，讓下次輪詢自然處理即可。
                         }
-                    }, 3 * 60 * 1000); // 3 分鐘
+                    }, 3 * 60 * 1000);
                 }
             }
         } catch (error) {
             this.logger.error('執行監測任務時發生錯誤', error);
+
+            const isInvalidGrant = error.response?.data?.error === 'invalid_grant' || String(error).includes('invalid_grant');
+            if (isInvalidGrant) {
+                this.logger.error('Token 已失效 (invalid_grant)！正在清除無效的授權記錄並中斷服務以重新授權。');
+
+                try {
+                    const user = await this.discordService.client.users.fetch(this.config.discord.targetUserId);
+                    if (user) {
+                        await user.send('⚠️ **[Gmail 監測服務警告]**\n您的 Google 授權 Token 已經失效 (通常是因為您的 Google Cloud 專案仍在「測試階段」，導致 Token 每 7 天過期一次)。\n\n**系統已自動清除無效的 Token 並停止目前的監測。**\n請**重新啟動機器人**，系統將會引導您重新進行認證綁定！\n\n💡 *解決「憑證很容易過期」的根本方法：請至 Google Cloud Console -> [API和服務] -> [OAuth 同意畫面] -> 點擊「發布應用程式 (Publish App)」，將發布狀態改為「實際運作 (In production)」。*');
+                    }
+                } catch (e) {
+                    this.logger.error('無法傳送警告訊息給使用者', e);
+                }
+
+                if (this.storage) {
+                    await this.storage.deleteSetting('user_tokens');
+                }
+
+                process.exit(1);
+            }
         }
     }
 }

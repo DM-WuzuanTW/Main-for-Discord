@@ -100,6 +100,14 @@ class StorageService {
         }
     }
 
+    async deleteSetting(key) {
+        try {
+            await this.db.run(`DELETE FROM app_settings WHERE key = ?`, [key]);
+        } catch (err) {
+            this.logger.error(`刪除設定失敗 (${key})`, err);
+        }
+    }
+
     _decryptSession(text, isEncrypt = false) {
         const crypto = require('crypto');
         const tokenStr = process.env.DISCORD_TOKEN || 'fallback_secret_key_if_no_discord_token_provided';
