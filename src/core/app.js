@@ -1,3 +1,5 @@
+const fs = require('fs');
+const path = require('path');
 const configLoader = require('../config/config.loader');
 const authService = require('../services/auth.service');
 const StorageService = require('../services/storage.service');
@@ -60,9 +62,30 @@ class GmailNotifierApp {
             if (newMessages.length === 0) {
                 return;
             }
+            const blacklistPath = path.join(__dirname, '../../blacklist.txt');
+            let blacklist = [];
+            if (fs.existsSync(blacklistPath)) {
+                try {
+                    blacklist = fs.readFileSync(blacklistPath, 'utf8')
+                        .split(/\r?\n/)
+                        .map(line => line.trim())
+                        .filter(line => line && !line.startsWith('#'));
+                } catch (err) {
+                    this.logger.error('讀取過濾黑名單失敗', err);
+                }
+            }
+
             this.logger.info(`發現 ${newMessages.length} 封新未讀郵件`);
             for (const msg of newMessages) {
                 const details = await this.gmailService.getMessageDetails(msg.id);
+
+                const matchedRule = blacklist.find(rule => details.subject.includes(rule));
+                if (matchedRule) {
+                    this.logger.info(`[過濾] 郵件標題匹配黑名單規則: "${matchedRule}"，已標記為已處理並略過發送至 Discord。標題: "${details.subject}"`);
+                    await this.storage.add(msg.id);
+                    continue;
+                }
+
                 try {
                     await this.discordService.sendDM(this.config.discord.targetUserId, details);
                     await this.storage.add(msg.id);

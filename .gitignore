@@ -5,3 +5,5 @@ credentials.json
 processed_ids.sqlite
 *.sqlite-journal
 *.log
+blacklist.txt
+
